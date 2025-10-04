@@ -1,7 +1,19 @@
 const std = @import("std");
+const assert = std.debug.assert;
 const config = @import("config.zig");
 const runtime = @import("runtime.zig");
-const player = @import("player.zig");
+const builtin = @import("builtin");
+const Meta = @import("Meta.zig");
+const Player = blk: {
+    if (builtin.target.os.tag == .macos) {
+        break :blk @import("player_macos.zig");
+    } else if (builtin.target.os.tag == .linux) {
+        break :blk @import("player_linux.zig");
+    } else {
+        @panic("lrc_tty only works on linux or macos");
+    }
+};
+
 const lyrics = @import("lyrics.zig");
 const render = @import("render.zig");
 const cache = @import("cache.zig");
@@ -16,6 +28,8 @@ pub fn main() !void {
 
     const cfg = try config.parse(alloc);
     defer cfg.deinit(alloc);
+
+    const player = try Player.init();
 
     if (cfg.list_players) {
         const players = player.listPlayers(alloc) catch |err| {
@@ -43,7 +57,7 @@ pub fn main() !void {
     }
 
     if (cfg.raw_output) {
-        try runRaw(alloc, cfg);
+        try runRaw(alloc, player, cfg);
         return;
     }
 
@@ -63,8 +77,8 @@ pub fn main() !void {
     if (poll_ms_f > poll_ms_max) poll_ms_f = poll_ms_max;
     const poll_ms: i32 = @intFromFloat(poll_ms_f);
 
-    var last_track = try alloc.dupe(u8, "");
-    defer alloc.free(last_track);
+    var last_track: ?Meta = null;
+    defer if (last_track) |lt| lt.deinit(alloc);
 
     var lines: []lyrics.Line = &[_]lyrics.Line{};
     var lines_owned = false;
@@ -97,9 +111,9 @@ pub fn main() !void {
         const status = player.getStatus(alloc, cfg.player);
         const pos = player.getPosition(alloc, cfg.player);
 
-        if (!std.mem.eql(u8, meta.trackid, last_track)) {
-            alloc.free(last_track);
-            last_track = try alloc.dupe(u8, meta.trackid);
+        if (!meta.eql(last_track)) {
+            if (last_track) |lt| lt.deinit(alloc);
+            last_track = try meta.clone(alloc);
 
             alloc.free(title);
             title = try alloc.dupe(u8, meta.title);
@@ -109,6 +123,7 @@ pub fn main() !void {
             album = try alloc.dupe(u8, meta.album);
 
             if (lines_owned) {
+                assert(lines.len > 0);
                 freeLines(alloc, lines);
                 lines_owned = false;
             }
@@ -150,6 +165,7 @@ pub fn main() !void {
             renderer.reset();
         }
 
+        assert(lines.len > 0);
         renderer.draw(title, artist, album, status, pos, lines, src);
 
         if (runtime.shouldExit()) break;
@@ -162,7 +178,7 @@ fn freeLines(allocator: std.mem.Allocator, list: []lyrics.Line) void {
     allocator.free(list);
 }
 
-fn runRaw(allocator: std.mem.Allocator, cfg: config.Config) !void {
+fn runRaw(allocator: std.mem.Allocator, player: Player, cfg: config.Config) !void {
     const meta = player.getMeta(allocator, cfg.player);
     defer meta.deinit(allocator);
 

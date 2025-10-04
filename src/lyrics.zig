@@ -84,9 +84,7 @@ fn selectBestSearchResult(
             }
         }
 
-        const should_replace = best_lrc == null
-            or (is_synced and !best_is_synced)
-            or (is_synced == best_is_synced and score > best_score);
+        const should_replace = best_lrc == null or (is_synced and !best_is_synced) or (is_synced == best_is_synced and score > best_score);
 
         if (should_replace) {
             best_score = score;
@@ -96,6 +94,7 @@ fn selectBestSearchResult(
     }
 
     if (best_lrc) |l| {
+        std.debug.print("{any}\n", .{l});
         return SearchSelection{ .lrc = l, .is_synced = best_is_synced, .score = best_score };
     }
 

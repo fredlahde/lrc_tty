@@ -15,17 +15,25 @@ pub fn build(b: *std.Build) void {
         .root_module = root_module,
     });
 
-    exe.linkLibC();
-    exe.linkSystemLibrary("dbus-1");
+    if (target.result.os.tag == .linux) {
+        exe.linkLibC();
+        exe.linkSystemLibrary("dbus-1");
 
-    var code: u8 = undefined;
-    const dbus_cflags = b.runAllowFail(&.{ "pkg-config", "--cflags-only-I", "dbus-1" }, &code, .Inherit) catch |err| {
-        std.debug.print("failed to query pkg-config for dbus-1 ({s}); ensure pkg-config and libdbus-1 development headers are installed\n", .{@errorName(err)});
-        @panic("pkg-config dbus-1");
-    };
-    defer b.allocator.free(dbus_cflags);
+        var code: u8 = undefined;
+        const dbus_cflags = b.runAllowFail(&.{ "pkg-config", "--cflags-only-I", "dbus-1" }, &code, .Inherit) catch |err| {
+            std.debug.print("failed to query pkg-config for dbus-1 ({s}); ensure pkg-config and libdbus-1 development headers are installed\n", .{@errorName(err)});
+            @panic("pkg-config dbus-1");
+        };
+        defer b.allocator.free(dbus_cflags);
 
-    parsePkgConfigFlags(exe, dbus_cflags);
+        parsePkgConfigFlags(exe, dbus_cflags);
+    } else if (target.result.os.tag == .macos) {
+        exe.root_module.linkSystemLibrary("AppleMusicCtrlLib", .{});
+        exe.root_module.addLibraryPath(b.path("libs"));
+        exe.root_module.addIncludePath(b.path("include"));
+    } else {
+        @panic("lrc_tty only works on linux and macos");
+    }
 
     b.installArtifact(exe);
 

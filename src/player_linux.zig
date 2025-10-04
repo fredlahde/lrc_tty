@@ -1,4 +1,5 @@
 const std = @import("std");
+const Meta = @import("Meta.zig");
 
 const c = @cImport({
     @cInclude("dbus/dbus.h");
@@ -20,6 +21,8 @@ var connection: ?*c.DBusConnection = null;
 var match_rule: ?[:0]u8 = null;
 var match_player: ?[]u8 = null;
 
+const Player = @This();
+
 fn allocPrintZ(
     allocator: std.mem.Allocator,
     comptime fmt: []const u8,
@@ -31,21 +34,6 @@ fn allocPrintZ(
     @memcpy(result[0..tmp.len], tmp);
     return result;
 }
-
-pub const Meta = struct {
-    title: []u8,
-    artist: []u8,
-    album: []u8,
-    length: f64,
-    trackid: []u8,
-
-    pub fn deinit(self: Meta, allocator: std.mem.Allocator) void {
-        allocator.free(self.title);
-        allocator.free(self.artist);
-        allocator.free(self.album);
-        allocator.free(self.trackid);
-    }
-};
 
 fn resetConnection() void {
     if (match_rule) |rule| {
@@ -312,18 +300,22 @@ fn fetchMetadata(allocator: std.mem.Allocator, player: []const u8, meta: *Meta) 
     }
 }
 
-pub fn getPosition(allocator: std.mem.Allocator, player: []const u8) f64 {
+pub fn getPosition(player: Player, allocator: std.mem.Allocator, player_name: []const u8) f64 {
+    _ = player; // autofix
+
     const property: [:0]const u8 = "Position";
-    if (fetchInt64Property(allocator, player, property)) |micros| {
+    if (fetchInt64Property(allocator, player_name, property)) |micros| {
         return @as(f64, @floatFromInt(micros)) / 1_000_000.0;
     } else |_| {
         return 0.0;
     }
 }
 
-pub fn getStatus(allocator: std.mem.Allocator, player: []const u8) []const u8 {
+pub fn getStatus(player: Player, allocator: std.mem.Allocator, player_name: []const u8) []const u8 {
+    _ = player; // autofix
+
     const property: [:0]const u8 = "PlaybackStatus";
-    if (fetchStringProperty(allocator, player, property)) |value| {
+    if (fetchStringProperty(allocator, player_name, property)) |value| {
         defer allocator.free(value);
         if (std.mem.eql(u8, value, "Playing")) return "Playing";
         if (std.mem.eql(u8, value, "Paused")) return "Paused";
@@ -333,7 +325,9 @@ pub fn getStatus(allocator: std.mem.Allocator, player: []const u8) []const u8 {
     }
 }
 
-pub fn getMeta(allocator: std.mem.Allocator, player: []const u8) Meta {
+pub fn getMeta(player: Player, allocator: std.mem.Allocator, player_name: []const u8) Meta {
+    _ = player; // autofix
+
     var m = Meta{
         .title = allocator.dupe(u8, "") catch unreachable,
         .artist = allocator.dupe(u8, "") catch unreachable,
@@ -342,7 +336,7 @@ pub fn getMeta(allocator: std.mem.Allocator, player: []const u8) Meta {
         .trackid = allocator.dupe(u8, "") catch unreachable,
     };
 
-    fetchMetadata(allocator, player, &m) catch {};
+    fetchMetadata(allocator, player_name, &m) catch {};
     return m;
 }
 
@@ -380,7 +374,7 @@ pub fn listPlayers(allocator: std.mem.Allocator) ![][]u8 {
         c.dbus_message_iter_get_basic(&array_iter, name_arg);
         const full = std.mem.span(name_ptr);
         if (std.mem.startsWith(u8, full, mpris_prefix)) {
-            const suffix = full[mpris_prefix.len ..];
+            const suffix = full[mpris_prefix.len..];
             const copy = try allocator.dupe(u8, suffix);
             try list.append(allocator, copy);
         }
@@ -390,8 +384,10 @@ pub fn listPlayers(allocator: std.mem.Allocator) ![][]u8 {
     return try list.toOwnedSlice(allocator);
 }
 
-pub fn waitForChange(player: []const u8, timeout_ms: i32) !bool {
-    const conn = try ensurePropertiesMatch(player);
+pub fn waitForChange(player: Player, player_name: []const u8, timeout_ms: i32) !bool {
+    _ = player; // autofix
+
+    const conn = try ensurePropertiesMatch(player_name);
     var clamped = timeout_ms;
     if (clamped < 0) clamped = 0;
     if (clamped > std.math.maxInt(c_int)) clamped = std.math.maxInt(c_int);

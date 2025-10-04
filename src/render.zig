@@ -1,4 +1,5 @@
 const std = @import("std");
+const assert = std.debug.assert;
 const lyrics = @import("lyrics.zig");
 
 const TerminalSize = struct {
@@ -68,6 +69,8 @@ pub const RenderState = struct {
         _ = album;
         _ = status;
         _ = src;
+
+        assert(lines.len > 0);
 
         const term = getTerminalSize();
         const row_count: usize = @as(usize, if (term.rows == 0) 24 else term.rows);
